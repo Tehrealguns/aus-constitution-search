@@ -1,7 +1,6 @@
 const express = require("express");
 const path = require("path");
 const cors = require("cors");
-const Anthropic = require("@anthropic-ai/sdk").default;
 const { getFullConstitutionText } = require("./constitution");
 
 require("dotenv").config();
@@ -12,10 +11,6 @@ app.use(express.json());
 
 const clientDist = path.join(__dirname, "..", "client", "dist");
 app.use(express.static(clientDist));
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
 
 const SYSTEM_PROMPT = `You are a constitutional law research assistant specializing in the Australian Constitution. You will be given the full text of the Australian Constitution and a user's topic query.
 
@@ -61,6 +56,50 @@ Important:
 - Be thorough but accurate — do not invent or hallucinate sections that don't exist.
 - The "verbatim" field must contain the exact text from the Constitution, not a paraphrase.`;
 
+async function callClaude(topic) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey === "your-api-key-here") {
+    throw new Error("ANTHROPIC_API_KEY is not configured on the server.");
+  }
+
+  const constitutionText = getFullConstitutionText();
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 8192,
+      system: SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: `Here is the full text of the Australian Constitution:\n\n${constitutionText}\n\n---\n\nPlease find all sections relevant to the following topic: "${topic}"`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw { status: response.status, message: `Anthropic API ${response.status}: ${body}` };
+  }
+
+  const data = await response.json();
+  let text = data.content[0].text;
+
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonMatch) {
+    text = jsonMatch[1].trim();
+  }
+
+  return JSON.parse(text);
+}
+
 app.post("/api/search", async (req, res) => {
   const { topic } = req.body;
 
@@ -69,59 +108,23 @@ app.post("/api/search", async (req, res) => {
   }
 
   try {
-    if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === "your-api-key-here") {
-      return res.status(500).json({ error: "ANTHROPIC_API_KEY is not configured on the server." });
-    }
-
-    const constitutionText = getFullConstitutionText();
-
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 8192,
-      messages: [
-        {
-          role: "user",
-          content: `Here is the full text of the Australian Constitution:\n\n${constitutionText}\n\n---\n\nPlease find all sections relevant to the following topic: "${topic.trim()}"`,
-        },
-      ],
-      system: SYSTEM_PROMPT,
-    });
-
-    let responseText = message.content[0].text;
-
-    const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      responseText = jsonMatch[1].trim();
-    }
-
-    const parsed = JSON.parse(responseText);
-    res.json(parsed);
+    const result = await callClaude(topic.trim());
+    res.json(result);
   } catch (err) {
     console.error("API Error:", err.message || err);
-    if (err.response) console.error("Response body:", err.response);
 
-    if (err.status === 401 || (err.message && err.message.includes("401"))) {
-      return res
-        .status(401)
-        .json({ error: "Invalid API key. Check your ANTHROPIC_API_KEY." });
+    const status = err.status || 500;
+    if (status === 401) {
+      return res.status(401).json({ error: "Invalid API key. Check your ANTHROPIC_API_KEY." });
     }
-    if (err.status === 429) {
-      return res
-        .status(429)
-        .json({ error: "Rate limited. Please wait a moment and try again." });
-    }
-    if (err.status === 404 || (err.message && err.message.includes("not found"))) {
-      return res
-        .status(500)
-        .json({ error: "The AI model is not available. The server may need a model update." });
+    if (status === 429) {
+      return res.status(429).json({ error: "Rate limited. Please wait a moment and try again." });
     }
     if (err instanceof SyntaxError) {
-      return res
-        .status(500)
-        .json({ error: "Failed to parse the AI response. Please try again." });
+      return res.status(500).json({ error: "Failed to parse the AI response. Please try again." });
     }
 
-    res.status(500).json({
+    res.status(status).json({
       error: err.message || "Something went wrong while searching the Constitution.",
     });
   }
