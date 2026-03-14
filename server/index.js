@@ -69,6 +69,10 @@ app.post("/api/search", async (req, res) => {
   }
 
   try {
+    if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === "your-api-key-here") {
+      return res.status(500).json({ error: "ANTHROPIC_API_KEY is not configured on the server." });
+    }
+
     const constitutionText = getFullConstitutionText();
 
     const message = await anthropic.messages.create({
@@ -83,13 +87,20 @@ app.post("/api/search", async (req, res) => {
       system: SYSTEM_PROMPT,
     });
 
-    const responseText = message.content[0].text;
+    let responseText = message.content[0].text;
+
+    const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      responseText = jsonMatch[1].trim();
+    }
+
     const parsed = JSON.parse(responseText);
     res.json(parsed);
   } catch (err) {
-    console.error("API Error:", err);
+    console.error("API Error:", err.message || err);
+    if (err.response) console.error("Response body:", err.response);
 
-    if (err.status === 401) {
+    if (err.status === 401 || (err.message && err.message.includes("401"))) {
       return res
         .status(401)
         .json({ error: "Invalid API key. Check your ANTHROPIC_API_KEY." });
@@ -99,9 +110,19 @@ app.post("/api/search", async (req, res) => {
         .status(429)
         .json({ error: "Rate limited. Please wait a moment and try again." });
     }
+    if (err.status === 404 || (err.message && err.message.includes("not found"))) {
+      return res
+        .status(500)
+        .json({ error: "The AI model is not available. The server may need a model update." });
+    }
+    if (err instanceof SyntaxError) {
+      return res
+        .status(500)
+        .json({ error: "Failed to parse the AI response. Please try again." });
+    }
 
     res.status(500).json({
-      error: "Something went wrong while searching the Constitution.",
+      error: err.message || "Something went wrong while searching the Constitution.",
     });
   }
 });
