@@ -128,7 +128,13 @@ async function callClaude(topic, selectedLegislation) {
 
   if (!response.ok) {
     const body = await response.text();
-    throw { status: response.status, message: `Anthropic API ${response.status}: ${body}` };
+    let errorMsg = `Anthropic API error (${response.status})`;
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed?.error?.message) errorMsg = parsed.error.message;
+    } catch (_) {}
+    console.error("Anthropic raw error:", response.status, body);
+    throw { status: response.status, message: errorMsg };
   }
 
   const data = await response.json();
@@ -159,28 +165,23 @@ app.post("/api/search", async (req, res) => {
     return res.status(400).json({ error: "No valid legislation selected." });
   }
 
-  if (selectedLegislation.length > 8) {
-    return res.status(400).json({ error: "Please select up to 8 pieces of legislation at a time for best results." });
-  }
-
   try {
     const result = await callClaude(topic.trim(), selectedLegislation);
     res.json(result);
   } catch (err) {
-    console.error("API Error:", err.message || err);
+    console.error("API Error:", err.status, err.message || err);
 
-    const status = err.status || 500;
-    if (status === 401) {
-      return res.status(401).json({ error: "Invalid API key. Check your ANTHROPIC_API_KEY." });
+    if (err.status === 401) {
+      return res.status(500).json({ error: "Invalid API key. Check your ANTHROPIC_API_KEY." });
     }
-    if (status === 429) {
+    if (err.status === 429) {
       return res.status(429).json({ error: "Rate limited. Please wait a moment and try again." });
     }
     if (err instanceof SyntaxError) {
       return res.status(500).json({ error: "Failed to parse the AI response. Please try again." });
     }
 
-    res.status(status).json({
+    res.status(500).json({
       error: err.message || "Something went wrong while searching.",
     });
   }
