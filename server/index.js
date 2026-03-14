@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const cors = require("cors");
 const Anthropic = require("@anthropic-ai/sdk").default;
 const { getFullConstitutionText } = require("./constitution");
@@ -8,6 +9,9 @@ require("dotenv").config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const clientDist = path.join(__dirname, "..", "client", "dist");
+app.use(express.static(clientDist));
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -100,6 +104,10 @@ app.post("/api/search", async (req, res) => {
       error: "Something went wrong while searching the Constitution.",
     });
   }
+});
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(clientDist, "index.html"));
 });
 
 const PORT = process.env.PORT || 3001;
