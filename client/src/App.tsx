@@ -1,12 +1,29 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import SearchBar from "./components/SearchBar";
+import LegislationFilter from "./components/LegislationFilter";
 import Results from "./components/Results";
 
+export interface LegislationItem {
+  id: string;
+  title: string;
+  jurisdiction: string;
+  year: number;
+  category: string;
+  description: string;
+  keywords: string[];
+}
+
+export interface CatalogResponse {
+  legislation: LegislationItem[];
+  jurisdictions: { id: string; label: string }[];
+  categories: string[];
+}
+
 export interface SearchResult {
+  act: string;
+  jurisdiction: string;
   section: string;
   title: string;
-  chapter: string;
-  part?: string;
   summary: string;
   relevance: "high" | "moderate" | "tangential";
   verbatim: string;
@@ -20,11 +37,24 @@ export interface SearchResponse {
 }
 
 export default function App() {
+  const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>(["constitution"]);
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    fetch("/api/catalog")
+      .then((res) => res.json())
+      .then((data: CatalogResponse) => setCatalog(data))
+      .catch(() => setError("Failed to load legislation catalog."));
+  }, []);
+
   async function handleSearch(topic: string) {
+    if (selectedIds.length === 0) {
+      setError("Please select at least one piece of legislation to search.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setResponse(null);
@@ -33,7 +63,7 @@ export default function App() {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic }),
+        body: JSON.stringify({ topic, legislationIds: selectedIds }),
       });
 
       if (!res.ok) {
@@ -57,7 +87,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto max-w-4xl px-6 py-8">
+        <div className="mx-auto max-w-5xl px-6 py-8">
           <div className="flex items-center gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
               <svg
@@ -76,19 +106,30 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
-                Australian Constitution Search
+                Australian Legislation Search
               </h1>
               <p className="text-sm text-gray-500">
-                Search any topic to find relevant constitutional sections with
-                plain-English summaries
+                Search across the Constitution, Federal Acts, and NSW
+                legislation with AI-powered analysis
               </p>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-8">
-        <SearchBar onSearch={handleSearch} loading={loading} />
+      <main className="mx-auto max-w-5xl px-6 py-8">
+        <div className="space-y-6">
+          <SearchBar onSearch={handleSearch} loading={loading} />
+
+          {catalog && (
+            <LegislationFilter
+              catalog={catalog}
+              selectedIds={selectedIds}
+              onChange={setSelectedIds}
+              disabled={loading}
+            />
+          )}
+        </div>
 
         {error && (
           <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-6 py-4">
@@ -118,11 +159,12 @@ export default function App() {
               </svg>
             </div>
             <h2 className="text-lg font-medium text-gray-900">
-              Search the Constitution
+              Search Australian legislation
             </h2>
-            <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
-              Try topics like "freedom of religion", "taxation powers", "Senate
-              elections", "High Court jurisdiction", or "trade between states".
+            <p className="mx-auto mt-2 max-w-lg text-sm text-gray-500">
+              Select the legislation you want to search, then enter a topic.
+              Try "freedom of religion", "unfair dismissal", "tenant rights",
+              or "discrimination in employment".
             </p>
           </div>
         )}
@@ -137,7 +179,10 @@ function SkeletonResults() {
       <div className="h-6 w-48 animate-pulse rounded-lg bg-gray-200" />
       <div className="h-16 animate-pulse rounded-xl bg-gray-200" />
       {[1, 2, 3].map((i) => (
-        <div key={i} className="rounded-xl border border-gray-200 bg-white p-6">
+        <div
+          key={i}
+          className="rounded-xl border border-gray-200 bg-white p-6"
+        >
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <div className="h-6 w-20 animate-pulse rounded-lg bg-gray-200" />

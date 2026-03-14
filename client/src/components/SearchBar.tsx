@@ -17,11 +17,13 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
 
   const suggestions = [
     "Freedom of religion",
-    "Taxation powers",
-    "Senate elections",
-    "High Court",
-    "Trade between states",
-    "Changing the Constitution",
+    "Unfair dismissal",
+    "Tenant rights",
+    "Racial discrimination",
+    "Privacy and data",
+    "Immigration detention",
+    "Workplace safety",
+    "Marriage equality",
   ];
 
   return (
@@ -45,7 +47,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="Enter a topic, e.g. immigration, defence, voting rights..."
+            placeholder="Enter a legal topic, e.g. discrimination in employment, drink driving, tenant eviction..."
             disabled={loading}
             className="w-full rounded-xl border border-gray-200 bg-white py-4 pl-12 pr-4 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           />
@@ -79,7 +81,7 @@ export default function SearchBar({ onSearch, loading }: SearchBarProps) {
               Searching...
             </span>
           ) : (
-            "Search Constitution"
+            "Search legislation"
           )}
         </button>
       </form>

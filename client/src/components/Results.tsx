@@ -26,6 +26,11 @@ const RELEVANCE_STYLES = {
   },
 };
 
+const JURISDICTION_STYLES: Record<string, { bg: string; text: string }> = {
+  federal: { bg: "bg-emerald-50", text: "text-emerald-700" },
+  nsw: { bg: "bg-sky-50", text: "text-sky-700" },
+};
+
 export default function Results({ data }: ResultsProps) {
   if (data.resultCount === 0) {
     return (
@@ -46,18 +51,30 @@ export default function Results({ data }: ResultsProps) {
           </svg>
         </div>
         <h3 className="text-lg font-medium text-gray-900">
-          No relevant sections found
+          No relevant provisions found
         </h3>
         <p className="mt-2 text-sm text-gray-500">{data.overview}</p>
       </div>
     );
   }
 
+  const actGroups = data.results.reduce<Record<string, SearchResult[]>>(
+    (groups, result) => {
+      const key = result.act;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(result);
+      return groups;
+    },
+    {}
+  );
+
   return (
     <div className="mt-8 space-y-6">
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-medium text-gray-900">
-          {data.resultCount} section{data.resultCount !== 1 ? "s" : ""} found
+          {data.resultCount} provision{data.resultCount !== 1 ? "s" : ""} found
+          across {Object.keys(actGroups).length} Act
+          {Object.keys(actGroups).length !== 1 ? "s" : ""}
         </h2>
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
           {data.topic}
@@ -70,7 +87,7 @@ export default function Results({ data }: ResultsProps) {
 
       <div className="space-y-4">
         {data.results.map((result, idx) => (
-          <ResultCard key={`${result.section}-${idx}`} result={result} />
+          <ResultCard key={`${result.act}-${result.section}-${idx}`} result={result} />
         ))}
       </div>
     </div>
@@ -80,6 +97,8 @@ export default function Results({ data }: ResultsProps) {
 function ResultCard({ result }: { result: SearchResult }) {
   const [expanded, setExpanded] = useState(false);
   const style = RELEVANCE_STYLES[result.relevance] || RELEVANCE_STYLES.moderate;
+  const jurisdictionStyle =
+    JURISDICTION_STYLES[result.jurisdiction] || JURISDICTION_STYLES.federal;
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white transition-colors hover:border-gray-300">
@@ -102,10 +121,14 @@ function ResultCard({ result }: { result: SearchResult }) {
                 {style.label}
               </span>
             </div>
-            <p className="mt-1 text-xs text-gray-500">
-              {result.chapter}
-              {result.part ? ` \u2022 ${result.part}` : ""}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded px-1.5 py-0.5 text-xs font-medium ${jurisdictionStyle.bg} ${jurisdictionStyle.text}`}
+              >
+                {result.jurisdiction === "federal" ? "Federal" : "NSW"}
+              </span>
+              <span className="text-xs text-gray-500">{result.act}</span>
+            </div>
             <p className="mt-2 text-sm text-gray-600 line-clamp-2">
               {result.summary}
             </p>
@@ -131,7 +154,7 @@ function ResultCard({ result }: { result: SearchResult }) {
       {expanded && (
         <div className="border-t border-gray-100 px-6 py-4">
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
-            Full constitutional text
+            Legislative text
           </p>
           <div className="rounded-xl bg-gray-50 px-4 py-4">
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
